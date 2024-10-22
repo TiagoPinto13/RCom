@@ -27,7 +27,7 @@
 // #define BCC1_UA A^C_UA
 
 unsigned char c_byte;
-unsigned char C_values[2] = {0x00, 0x07, 0x03, 0xAA, 0xAB, 0x54, 0x55, 0x0B};
+unsigned char C_values[8] = {0x00, 0x07, 0x03, 0xAA, 0xAB, 0x54, 0x55, 0x0B};
 int retransmissions = 0;
 int timeout;
 extern int alarmEnabled;
@@ -124,19 +124,45 @@ int llwrite(const unsigned char *buf, int bufSize)
     }
     int j = 4;
     for (unsigned int i = 0 ; i < bufSize ; i++) {
-        if(buf[i] == FLAG || buf[i] == ESC) {
+        if(buf[i] == FLAG) {
             dataFrame = realloc(dataFrame,++frameSize);
             dataFrame[j++] = ESC;
+            dataFrame[j++] = 0x5e;
         }
-        dataFrame[j++] = buf[i];
+        else if (buf[i] == ESC) {
+            dataFrame = realloc(dataFrame,++frameSize);
+            dataFrame[j++] = ESC;
+            dataFrame[j++]= 0x5d;
+        }
+        else
+            dataFrame[j++] = buf[i];
     }
-    dataFrame[j++] = BCC2;
+    if (BCC2 == FLAG) {
+        dataFrame[j++] = 0x7d;
+        dataFrame[j++] = 0x5e;
+    }
+    else
+        dataFrame[j++] = BCC2;
     dataFrame[j++] = FLAG;
     
-    writeBytesSerialPort(dataFrame, bufSize+5);
+    int nnretransmissions = 0;
+    StateLinkL state = WRITING;
+    while (nnretransmissions<retransmissions && state!=STOP && state!=ACCEPTED) {
+        alarmEnabled = FALSE;
+        alarm(timeout);
+        unsigned char byte;
+        while (alarmEnabled == FALSE) {
+            writeBytesSerialPort(dataFrame, bufSize+5);
+            int out = readByteSerialPort(&byte);
+            if (out > 0) {
+                updateStateMachineWriteRead(byte, &state);
+
+            }
+        }
+    }
+
     return 0;
 }
-
 
 
 ////////////////////////////////////////////////
@@ -159,7 +185,7 @@ int llclose(int showStatistics)
     StateLinkL state = START;
     unsigned char byte;
     (void) signal(SIGALRM, alarmHandler);
-    unsigned char byte;
+    
     unsigned char supervisionFrames[BUF_SIZE] = {F, A, C_values[6], A^C_values[6], F};
     while(retransmissions != 0 && state != STOP) {
         
@@ -171,7 +197,7 @@ int llclose(int showStatistics)
 
         while (alarmEnabled == FALSE && state != STOP) {
             if (readByteSerialPort(&byte) > 0) {
-                updateStateMachine(byte, &state, NULL);
+                updateStateMachine(byte, &state, 0);
             }
         }
         retransmissions--;
@@ -267,64 +293,44 @@ int updateStateMachine(unsigned char byte, StateLinkL *state, LinkLayerRole role
     return 0;
 }
 
-
-// int updateStateMachine2(unsigned char byte, StateLinkL *state) {
-//     switch (*state)
-//     {
-//         case START:
-//             if (byte == F)
-//             {
-//                 printf("F read\n");
-//                 *state = FLAG_RCV;
-//             }
-//             break;
-
-//         case FLAG_RCV:
-//             if (byte == A)
-//             {
-//                 printf("A read\n");
-//                 *state = A_RCV;
-//             }
-//             else if (byte != F) *state = START;
-//             break;
-
-//         case A_RCV:
-//             if (byte == C_UA) {
-//                 printf("C_UA read\n");
-//                 *state = C_RCV;
-//                 c_byte = byte;
-//             }
-            
-//             else if (byte != F) *state = START;
-
-//             else if (byte == F) *state= FLAG_RCV;
-
-//             break;
-
-
-//         case C_RCV:
-//             if (byte == (BCC1_UA)) {
-//                 printf("BCC1 read\n");
-//                 *state = BCC1_OK;
-//             }
-//             else if (byte != F) *state = START;
-
-//             else if (byte == F) *state= FLAG_RCV;
-
-//             break;
-            
-
-//         case BCC1_OK:
-//             if (byte == F) {
-//                 printf("final F read\n");
-//                 *state = STOP;
-//             }
-//             else *state = START;
-//             break;
+int updateStateMachineWriteRead(unsigned char byte, StateLinkL *state) {
+    switch (*state)
+    {
+    case START:
+    if (byte == FLAG) {
+        *state = FLAG_RCV;
+    }
+        break;
+    
+    case FLAG_RCV:
+        if (byte == ) {
+            /* code */
+        }
         
-//         default:
-//             break;
-//     }
-//     return 0;
-// }
+        break;
 
+    case A_RCV:
+        break;
+
+    case C_RCV:
+        break;
+
+    case BCC1_OK:
+        break;
+
+    case STOP:
+        break;
+
+    case WRITING:
+        break;
+
+    case ACCEPTED:
+        break;
+        
+    default:
+        break;
+    }
+
+    return 0;
+
+}
