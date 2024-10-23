@@ -26,7 +26,9 @@ typedef enum
     A_RCV,
     C_RCV,
     BCC1_OK,
-    STOP
+    STOP,
+    READING,
+    FOUND_ESC
 } StateLinkL;
 
 // SIZE of maximum acceptable payload.
@@ -55,6 +57,6 @@ int llread(unsigned char *packet);
 int llclose(int showStatistics);
 
 int updateStateMachine(unsigned char byte, StateLinkL *state, LinkLayerRole role);
-int updateStateMachineWrite(unsigned char byte, StateLinkL *state);
-
+int updateStateMachineWrite();
+int updateStateMachineRead();
 #endif // _LINK_LAYER_H_

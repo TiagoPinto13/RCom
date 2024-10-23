@@ -22,7 +22,7 @@
 #define ESC 0x7D
 #define F 0x7E
 #define A 0x03
-#define A_rx 0x01
+#define A_RX 0x01
 // #define C_RV 0x00
 // #define BCC1 A^C_RV
 // #define C_UA 0x07
@@ -32,7 +32,8 @@
 #define C_UA 0x07
 #define C_RR ((uint8_t[]){0xAA, 0xAB})
 #define C_REJ ((uint8_t[]){0x54, 0x55})
-#define C_Disc 0x0B
+#define C_FN ((uint8_t[]){0x00, 0x80})
+#define C_DISC 0x0B
 unsigned char c_byte;
 int retransmissions = 0;
 int timeout;
@@ -62,12 +63,9 @@ int llopen(LinkLayer connectionParameters)
                 return -1;
             }
             
-            printf("supervisionframe wrote\n");
-
             alarm(connectionParameters.timeout);
             alarmEnabled = FALSE;        
 
-            printf("try to read UA...\n");
             while (alarmEnabled == FALSE && state!=STOP)
             {
                 if (readByteSerialPort(&byte) >0) {
@@ -80,7 +78,6 @@ int llopen(LinkLayer connectionParameters)
         }
         if (state != STOP) 
             return -1;
-        printf("UA received\n");
     }
 
 
@@ -88,7 +85,6 @@ int llopen(LinkLayer connectionParameters)
 
     else if (connectionParameters.role==LlRx){
         unsigned char byte;
-        printf("try to read supervisionframe...\n");
         while (state != STOP)
         {   
             int rByte = readByteSerialPort(&byte);
@@ -96,19 +92,17 @@ int llopen(LinkLayer connectionParameters)
                 return -1;
             else if (rByte>0)
             {
-                printf("byte detected - ");
+                
                 updateStateMachine(byte, &state, LlRx);
             }
             
         }
-        printf("supervisionframe read\n");
-        printf("sending UA\n");
+        
         unsigned char supervisionFrames[BUF_SIZE] = {F, A, C_UA, A^C_UA, F};
         writeBytesSerialPort(supervisionFrames, 5);
     }
     else
         return -1;
-    printf("success final\n");
     return 0;
 
 }
@@ -145,6 +139,7 @@ int llwrite(const unsigned char *buf, int bufSize)
             dataFrame[j++] = buf[i];
     }
     if (BCC2 == FLAG) {
+        dataFrame = realloc(dataFrame,++frameSize);
         dataFrame[j++] = 0x7d;
         dataFrame[j++] = 0x5e;
     }
@@ -161,7 +156,7 @@ int llwrite(const unsigned char *buf, int bufSize)
         rej_byte=FALSE;
         while (alarmEnabled == FALSE && !rr_byte && !rej_byte ) {
             writeBytesSerialPort(dataFrame, bufSize+5);
-            unsigned char res = updateStateMachineWriteRead();
+            unsigned char res = updateStateMachineWrite();
             if (res==0){
                 continue;
             }
@@ -177,12 +172,11 @@ int llwrite(const unsigned char *buf, int bufSize)
         if (rr_byte) break;
         nnretransmissions++;
     }
-
+    free(dataFrame);
     if (rr_byte) {
         return frameSize;
     }
-
-    return 0;
+    return -1;
 }
 
 
@@ -191,10 +185,7 @@ int llwrite(const unsigned char *buf, int bufSize)
 ////////////////////////////////////////////////
 int llread(unsigned char *packet)
 {
-    // ler payload escrito pelo llwrite
-    // F-> ESC|0x5E
-    // ESC -> ESC| 0x5D
-        return 0;
+    return updateStateMachineRead(*packet);
 }
 
 ////////////////////////////////////////////////
@@ -207,7 +198,7 @@ int llclose(int showStatistics)
     unsigned char byte;
     (void) signal(SIGALRM, alarmHandler);
     
-    unsigned char supervisionFrames[BUF_SIZE] = {F, A, C_Disc, A^C_Disc, F};
+    unsigned char supervisionFrames[BUF_SIZE] = {F, A, C_DISC, A^C_DISC, F};
     while(retransmissions != 0 && state != STOP) {
         
         if(writeBytesSerialPort(supervisionFrames, 5)!=5) {
@@ -244,7 +235,6 @@ int updateStateMachine(unsigned char byte, StateLinkL *state, LinkLayerRole role
         case START:
             if (byte == F)
             {
-                printf("F read\n");
                 *state = FLAG_RCV;
             }
             else printf("weird byte\n");
@@ -253,10 +243,9 @@ int updateStateMachine(unsigned char byte, StateLinkL *state, LinkLayerRole role
         case FLAG_RCV:
             if (byte == A && (role == LlTx || role == LlRx))
             {
-                printf("A read\n");
                 *state = A_RCV;
             }
-            else if (byte == A_rx && role == NULL) {
+            else if (byte == A_RX && role == 0) {
                 *state = A_RCV;
             }
             else if (byte != F) *state = START;
@@ -265,8 +254,7 @@ int updateStateMachine(unsigned char byte, StateLinkL *state, LinkLayerRole role
             break;
 
         case A_RCV:
-            if ((byte == C_Set && role == LlRx) || (byte == C_UA && role == LlTx) || (byte == C_Disc && role == NULL)) {
-                printf("C_value read\n");
+            if ((byte == C_Set && role == LlRx) || (byte == C_UA && role == LlTx) || (byte == C_DISC && role == 0)) {
                 *state = C_RCV;
                 c_byte = byte;
             }
@@ -282,10 +270,9 @@ int updateStateMachine(unsigned char byte, StateLinkL *state, LinkLayerRole role
 
         case C_RCV:
             if (byte == (A^c_byte) && (role == LlTx || role == LlRx)) {
-                printf("BCC read\n");
                 *state = BCC1_OK;
             }
-            else if (byte == A_rx^C_Disc && role == NULL) {
+            else if (byte == (A_RX^C_DISC) && role == 0) {
                 *state = BCC1_OK;
             }
             else if (byte != F) *state = START;
@@ -299,7 +286,6 @@ int updateStateMachine(unsigned char byte, StateLinkL *state, LinkLayerRole role
 
         case BCC1_OK:
             if (byte == F) {
-                printf("final F read\n");
                 *state = STOP;
             }
             else {
@@ -314,7 +300,7 @@ int updateStateMachine(unsigned char byte, StateLinkL *state, LinkLayerRole role
     return 0;
 }
 
-int updateStateMachineWriteRead() {
+int updateStateMachineWrite() {
     unsigned char byte, cField = 0;
     StateLinkL state = START;
 
@@ -329,12 +315,12 @@ int updateStateMachineWriteRead() {
                 break;
             
             case FLAG_RCV:
-                if (byte == A_rx) state = A_RCV;
+                if (byte == A_RX) state = A_RCV;
                 else  if (byte != FLAG) state = START;
                 break;
 
             case A_RCV:
-                if(byte == C_REJ[0] || byte == C_REJ[1] || byte == C_RR[0] || byte == C_RR[1] || byte == C_Disc) {
+                if(byte == C_REJ[0] || byte == C_REJ[1] || byte == C_RR[0] || byte == C_RR[1] || byte == C_DISC) {
                     state = C_RCV;
                     cField = byte;
                 }
@@ -345,7 +331,7 @@ int updateStateMachineWriteRead() {
                 break;
 
             case C_RCV:
-                if (byte == (A_rx ^ cField)) state = BCC1_OK;
+                if (byte == (A_RX ^ cField)) state = BCC1_OK;
                 else if (byte == FLAG) state = FLAG_RCV;
                 else state = START;
                 break;
@@ -364,4 +350,98 @@ int updateStateMachineWriteRead() {
 
     return cField;
 
+}
+
+int updateStateMachineRead(unsigned char *packet) {
+    unsigned char byte, cField = 0;
+    StateLinkL state = START;
+    int index = 0;
+
+    while (state != STOP) {  
+        if (readByteSerialPort(&byte) > 0 || 1) {
+            switch (state)
+            {
+            case START:
+            if (byte == FLAG) {
+                state = FLAG_RCV;
+            }
+                break;
+            
+            case FLAG_RCV:
+                if (byte == A_RX) state = A_RCV;
+                else  if (byte != FLAG) state = START;
+                break;
+
+            case A_RCV:
+                if(byte == C_FN[0] || byte == C_FN[1]) {
+                    state = C_RCV;
+                    cField = byte;
+                }
+                else if (byte == FLAG) {
+                    state = FLAG;
+                }
+                else if (byte == C_DISC) {
+                    unsigned char supervisionFrames[BUF_SIZE] = {F, A_RX, C_DISC, A_RX^C_DISC, F};
+                    if(writeBytesSerialPort(supervisionFrames, 5)<0) {
+                        return -1;
+                    }
+                    return 0;
+                }
+                else state = START;
+                break;
+
+            case C_RCV:
+                if (byte == (A_RX ^ cField)) state = READING;
+                else if (byte == FLAG) state = FLAG_RCV;
+                else state = START;
+                break;
+
+            case READING:
+                if (byte == ESC){
+                    state = FOUND_ESC;
+                }
+                
+                else if (byte == FLAG) {
+                    unsigned char bcc2 = packet[index-1];
+                    index--;
+                    packet[index] = '\0';
+                    unsigned char acc = packet[0];
+
+                    for (unsigned int j = 1; j < index; j++)
+                        acc ^= packet[j];
+
+                    if (bcc2 == acc){
+                        state = STOP;
+                        unsigned char supervisionFrames[BUF_SIZE] = {F, A_RX, C_RR[currentTramaTx], A_RX^C_RR[currentTramaTx], F};
+                        if(writeBytesSerialPort(supervisionFrames, 5)<0) {
+                            return -1;
+                        }
+                        currentTramaTx = (currentTramaTx + 1)%2;
+                        return index; 
+                    }
+                    else{
+                        printf("Error: retransmition\n");
+                        unsigned char supervisionFrames[BUF_SIZE] = {F, A_RX, C_RR[currentTramaTx], A_RX^C_RR[currentTramaTx], F};
+                        writeBytesSerialPort(supervisionFrames, 5);
+                        return -1;
+                    };
+                }
+                
+                else packet[index++] = byte;
+                break;
+
+            case FOUND_ESC:
+                state = READING;
+                if (byte == ESC || byte == FLAG) packet[index++] = byte;
+                else{
+                    packet[index++] = ESC;
+                    packet[index++] = byte;
+                }
+                break;
+            default:
+                break;
+            }
+        }
+    }
+    return -1;
 }
