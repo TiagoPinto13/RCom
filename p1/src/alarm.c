@@ -11,11 +11,3 @@ void alarmHandler(int signal) {
     alarmCount++;
     printf("Alarm #%d\n", alarmCount);
 }
-
-int alarmTriggers(int seconds) {
-    alarm(seconds);
-    alarmEnabled = TRUE;
-    
-    
-    return 0;
-}

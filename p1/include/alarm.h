@@ -10,6 +10,5 @@ extern int alarmEnabled;
 extern int alarmCount;
 
 void alarmHandler(int signal);
-int alarmTriggers(int seconds);
 
 #endif // ALARM_H
