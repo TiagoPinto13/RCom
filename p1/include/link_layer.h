@@ -26,9 +26,7 @@ typedef enum
     A_RCV,
     C_RCV,
     BCC1_OK,
-    STOP,
-    WRITING,
-    ACCEPTED
+    STOP
 } StateLinkL;
 
 // SIZE of maximum acceptable payload.
