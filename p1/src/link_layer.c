@@ -54,7 +54,9 @@ int llopen(LinkLayer connectionParameters)
     StateLinkL state = START;
     if (connectionParameters.role == LlTx && state==START ) {
         unsigned char byte;
-        (void)signal(SIGALRM, alarmHandler);
+        struct sigaction act = {0};
+        act.sa_handler=&alarmHandler;
+        (void)sigaction(SIGALRM, &act,NULL);
         while (connectionParameters.nRetransmissions!=0 && state != STOP) {
 
             
@@ -389,14 +391,13 @@ int updateStateMachineRead(unsigned char *packet) {
 
     while (state != STOP) {  
         if (readByteSerialPort(&byte) > 0 ) {
-            if (i<20){
-                printf("byte: %x\n", byte);
-                i++;
-            } 
+            // if (i<20){
+            //     printf("byte: %x\n", byte);
+            //     i++;
+            // } 
             switch (state)
             {
                 case START:{
-                    printf("START\n");
                     if (byte == FLAG) {
                         state = FLAG_RCV;
                     }
@@ -404,19 +405,16 @@ int updateStateMachineRead(unsigned char *packet) {
                 }
                 
                 case FLAG_RCV:{
-                    printf("FLAG_RCV\n");
                     if (byte == A) state = A_RCV;
                     else  if (byte != FLAG) state = START;
                     break;
                 }
 
                 case A_RCV:{
-                    printf("A_RCV\n");
                     if(byte == C_FN[0] || byte == C_FN[1]) {
 
                         state = C_RCV;
                         cField = byte;
-                        printf("bytezao: %x\n", cField);
                     }
                     else if (byte == FLAG) {
                         state = FLAG;
@@ -439,14 +437,10 @@ int updateStateMachineRead(unsigned char *packet) {
                 }
 
                 case READING:{
-                    printf("READING\n");
                     if (byte == ESC){
-                        printf("FOUND_ESC\n");
                         state = FOUND_ESC;
                     }
-                    printf("byte: %x\n", byte);
                     if (byte == FLAG) {
-                        printf("STOP\n");
                         unsigned char bcc2 = packet[index-1];
                         index--;
                         packet[index] = '\0';
@@ -476,7 +470,6 @@ int updateStateMachineRead(unsigned char *packet) {
                         }
                     }
                     else {
-                        printf("bytezona: %x\n", byte);
                         packet[index++] = byte;
                     }
                     break;
