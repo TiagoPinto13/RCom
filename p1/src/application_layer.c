@@ -8,6 +8,7 @@
 void applicationLayer(const char *serialPort, const char *role, int baudRate,
                       int nTries, int timeout, const char *filename)
 {
+
     LinkLayerRole layerRole;
     if (strcmp(role, "tx") == 0)
         layerRole = LlTx;
@@ -44,9 +45,8 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
             unsigned long int rxFileSize = 0;
             unsigned char* name = parseControlPacket(packet, packetSize, &rxFileSize); 
             printf("Debug: Control packet parsed. File name: %s, Size: %lu.\n", name, rxFileSize);
-
-            //FILE* newFile = fopen((char *)name, "wb+");
-            FILE* newFile = fopen("penguin-received.gif", "wb+");
+            printf("file name: %s\n", filename);
+            FILE* newFile = fopen(filename, "wb+");
 
             if (newFile == NULL) {
                 perror("Error: Could not open file for writing.\n");
@@ -54,7 +54,6 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
             }
 
             while (TRUE) {
-                printf("PILAAAAAAAAA");
                 while ((packetSize = llread(packet)) < 0);
                 printf("Debug: Received packet of size %d.\n", packetSize);
 
@@ -113,7 +112,6 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
             long int bytesLeft = fileSize;
 
             while (bytesLeft > 0) {
-                printf("Debug: CONAAAA.\n");
                 int dataSize = bytesLeft > (long int)MAX_PAYLOAD_SIZE ? MAX_PAYLOAD_SIZE : bytesLeft;
                 unsigned char* data = (unsigned char*)malloc(dataSize);
                 memcpy(data, content, dataSize);
@@ -161,7 +159,7 @@ unsigned char *getControlPacket(const unsigned int c, const char *filename, long
         auxfilesize= auxfilesize >> 8;
     }
 
-    *length = 3 + L1 + 2 + L2; // (C, T1,L1, V, T2,L2, V2)
+    *length = 3 + L1 + 2 + L2; // 3 bytes for C, T1 and L1, L1 bytes for V1, 1 byte for T2, L2 bytes for V2
 
     unsigned char *packet = (unsigned char*)malloc(*length);
 
@@ -199,7 +197,7 @@ unsigned char * getDataPacket(unsigned char sequence, unsigned char *data, int d
     memcpy(packet+4, data, dataSize);
     printf("Packet content: ");
     for (int i = 0; i < *packetSize; i++) {
-        printf("%02X ", packet[i]);  // Imprime cada byte em hexadecimal
+        printf("%02X ", packet[i]); 
     }
     printf("\n");
     return packet;

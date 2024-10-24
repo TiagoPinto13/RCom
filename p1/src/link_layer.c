@@ -118,14 +118,15 @@ int llwrite(const unsigned char *buf, int bufSize)
 {
     int frameSize = 6+bufSize;  // (F,A,C,BCC1, bufdata, BCC2, F)
     unsigned char *dataFrame = (unsigned char *) malloc(frameSize);
+    unsigned char BCC2 = 0;
+    for (unsigned int i = 0; i<bufSize; i++) {
+        BCC2^=buf[i];
+    }
     dataFrame[0]=FLAG;
     dataFrame[1]=A;
     dataFrame[2]=C_FN[currentTramaTx];
     dataFrame[3]=dataFrame[1]^dataFrame[2];
-    unsigned char BCC2 = buf[0];
-    for (unsigned int i = 1; i<bufSize; i++) {
-        BCC2^=buf[i];
-    }
+    
     int j = 4;
     for (unsigned int i = 0 ; i < bufSize ; i++) {
         if(buf[i] == FLAG) {
@@ -141,25 +142,13 @@ int llwrite(const unsigned char *buf, int bufSize)
         else
             dataFrame[j++] = buf[i];
     }
-    if (BCC2 == FLAG) {
-        dataFrame = realloc(dataFrame,++frameSize);
-        dataFrame[j++] = 0x7d;
-        dataFrame[j++] = 0x5e;
-    }
-    else if (BCC2 == ESC) {
-        dataFrame = realloc(dataFrame,++frameSize);
-        dataFrame[j++] = 0x7d;
-        dataFrame[j++] = 0x5d;
-    }
-    else {
-        dataFrame[j++] = BCC2;
-    }
+    dataFrame[j++] = BCC2;
+    dataFrame[j++]= FLAG;
 
 
-    dataFrame[j++] = FLAG;
     printf("dataFrame: ");
     for (int i = 0; i < frameSize; i++) {
-        printf("%02X ", dataFrame[i]); // Imprime cada byte em hexadecimal
+        printf("%02X ", dataFrame[i]);
     }
     printf("\n");
     int rr_byte=FALSE;
@@ -172,9 +161,11 @@ int llwrite(const unsigned char *buf, int bufSize)
         rr_byte=FALSE;
         rej_byte=FALSE;
         while (alarmEnabled == FALSE && !rr_byte && !rej_byte ) {
-            if(writeBytesSerialPort(dataFrame, frameSize)<0) {
+            if(writeBytesSerialPort(dataFrame, j)<0) {
                 return -1;
             }
+
+            
 
             unsigned char res = updateStateMachineWrite();
             if (!res) {
@@ -336,19 +327,22 @@ int updateStateMachineWrite() {
             switch (state)
             {
                 case START:
+                    printf("START\n");
                     if (byte == FLAG) {
                         state = FLAG_RCV;
                     }
                     break;
                 
                 case FLAG_RCV:
-                    if (byte == A) state = A_RCV;
+                    printf("FLAG_RCV\n");
+                    if (byte == A_RX) state = A_RCV;
                     else  if (byte != FLAG) state = START;
                     break;
 
                 case A_RCV:
+                    printf("A_RCV\n");
                     if(byte == C_REJ[0] || byte == C_REJ[1] || byte == C_RR[0] || byte == C_RR[1] || byte == C_DISC) {
-                        printf("C_RCV\n");
+                        printf("C_RCV a entrar\n");
                         state = C_RCV;
                         cField = byte;
 
@@ -360,18 +354,21 @@ int updateStateMachineWrite() {
                     break;
 
                 case C_RCV:
-                    if (byte == (A ^ cField)) state = BCC1_OK;
+                    printf("C_RCV\n");
+                    if (byte == (A_RX ^ cField)) state = BCC1_OK;
                     else if (byte == FLAG) state = FLAG_RCV;
                     else state = START;
-                    printf("BCC1_OK\n");
+                    printf("BCC1_OK a entrar\n");
                     break;
 
                 case BCC1_OK:
+                    printf("BCC1_OK\n");
                     if (byte == FLAG){
                         state = STOP;
+                        printf("STOP\n");
+
                     }
                     else state = START;
-                    printf("STOP\n");
                     break;
                 default:
                     break;
@@ -391,10 +388,10 @@ int updateStateMachineRead(unsigned char *packet) {
 
     while (state != STOP) {  
         if (readByteSerialPort(&byte) > 0 ) {
-            // if (i<20){
-            //     printf("byte: %x\n", byte);
-            //     i++;
-            // } 
+            if (i<20){
+                printf("byte: %x\n", byte);
+                i++;
+            } 
             switch (state)
             {
                 case START:{
@@ -420,7 +417,8 @@ int updateStateMachineRead(unsigned char *packet) {
                         state = FLAG;
                     }
                     else if (byte == C_DISC) {
-                        unsigned char supervisionFrames[BUF_SIZE] = {F, A, C_DISC, A^C_DISC, F};
+                        
+                        unsigned char supervisionFrames[BUF_SIZE] = {F, A_RX, C_DISC, A_RX^C_DISC, F};
                         if(writeBytesSerialPort(supervisionFrames, 5)<0) {
                             return -1;
                         }
@@ -440,18 +438,26 @@ int updateStateMachineRead(unsigned char *packet) {
                     if (byte == ESC){
                         state = FOUND_ESC;
                     }
-                    if (byte == FLAG) {
-                        unsigned char bcc2 = packet[index-1];
+                    else if (byte == FLAG) {
+                        unsigned char bcc2 = packet[index - 1];
+                        
                         index--;
                         packet[index] = '\0';
-                        unsigned char acc = packet[0];
+                        unsigned char acc = 0;
 
-                        for (unsigned int j = 1; j < index; j++)
+                        for (unsigned int j = 0; j < index; j++) {
                             acc ^= packet[j];
+                        }
+                    
+                        
+                        
+                        
+                        printf("acc = %x\n", acc);
+                        printf("bcc = %x\n", bcc2);
 
                         if (bcc2 == acc){
                             state = STOP;
-                            unsigned char supervisionFrames[BUF_SIZE] = {F, A, C_RR[currentTramaTx], A^C_RR[currentTramaTx], F};
+                            unsigned char supervisionFrames[BUF_SIZE] = {F, A_RX, C_RR[currentTramaTx], A_RX^C_RR[currentTramaTx], F};
                             if(writeBytesSerialPort(supervisionFrames, 5)<0) {
                                 return -1;
                             }
@@ -464,7 +470,7 @@ int updateStateMachineRead(unsigned char *packet) {
                         }
                         else{
                             printf("Error: retransmition\n");
-                            unsigned char supervisionFrames[BUF_SIZE] = {F, A, C_REJ[currentTramaTx], A^C_REJ[currentTramaTx], F};
+                            unsigned char supervisionFrames[BUF_SIZE] = {F, A_RX, C_REJ[currentTramaTx], A^C_REJ[currentTramaTx], F};
                             writeBytesSerialPort(supervisionFrames, 5);
                             return -1;
                         }
@@ -474,10 +480,16 @@ int updateStateMachineRead(unsigned char *packet) {
                     }
                     break;
                 }
+                
                 case FOUND_ESC:{
                     state = READING;
-                    if (byte == ESC || byte == FLAG) packet[index++] = byte;
-                    else{
+                    if (byte == 0x5D) {
+                        packet[index++] = ESC;  
+                    } 
+                    else if (byte == 0x5E) {
+                        packet[index++] = FLAG;  
+                    } 
+                    else {
                         packet[index++] = ESC;
                         packet[index++] = byte;
                     }
@@ -488,6 +500,5 @@ int updateStateMachineRead(unsigned char *packet) {
             }
         }
     }
-    
     return -1;
 }
