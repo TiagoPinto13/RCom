@@ -39,6 +39,9 @@ int retransmissions = 0;
 int timeout;
 unsigned char currentTramaTx = 0;
 extern int alarmEnabled;
+extern fd;
+char serialPort[50]; 
+int baudRate;
 ////////////////////////////////////////////////
 // LLOPEN
 ////////////////////////////////////////////////
@@ -51,6 +54,8 @@ int llopen(LinkLayer connectionParameters)
     }
     retransmissions = connectionParameters.nRetransmissions;
     timeout = connectionParameters.timeout;
+    strcpy(serialPort,connectionParameters.serialPort);
+    baudRate = connectionParameters.baudRate;
     StateLinkL state = START;
     if (connectionParameters.role == LlTx && state==START ) {
         unsigned char byte;
@@ -155,6 +160,9 @@ int llwrite(const unsigned char *buf, int bufSize)
     int rej_byte=FALSE;
     int nnretransmissions = retransmissions;
     printf("retransmissions: %d\n", nnretransmissions);
+    struct sigaction act = {0};
+    act.sa_handler=&alarmHandler;
+    (void)sigaction(SIGALRM, &act,NULL);
     while (nnretransmissions>0) {
         alarmEnabled = FALSE;
         alarm(timeout);
@@ -164,7 +172,9 @@ int llwrite(const unsigned char *buf, int bufSize)
             writeBytesSerialPort(dataFrame, j);
 
             unsigned char res = updateStateMachineWrite();
+            printf("res: %d fd:%d\n", res, fd);
             if (!res) {
+                
                 continue;
             }
             else if (res == C_REJ[0] || res == C_REJ[1]) {
@@ -214,6 +224,7 @@ int llclose(int showStatistics)
         if(writeBytesSerialPort(supervisionFrames, 5)!=5) {
             return -1;
         }
+        
         alarmEnabled = FALSE;
         alarm(timeout);
 
@@ -341,8 +352,10 @@ int updateStateMachineWrite() {
     int i = 0;
     while (state != STOP && alarmEnabled == FALSE) {  
         //printf("aaa\n");
+        int r = readByteSerialPort(&byte); 
+        //printf("%d \n",r);
 
-        if (readByteSerialPort(&byte) > 0 ) {
+        if (r > 0 ) {
             // if (i<20){
             //     printf("byte: %x\n", byte);
             //     i++;
@@ -400,6 +413,18 @@ int updateStateMachineWrite() {
                     break;
             }
         }
+        else if (r == -1) {
+            //printf("Attempting to open serial port: %s with baud rate: %d\n", serialPort, baudRate);
+            fd = openSerialPort(serialPort, baudRate);
+            if (fd != -1) {
+                printf("Successfully reopened serial port\n");
+                state = START;  // Reset the state machine
+                return 0;       // Continue the protocol
+            } else {
+                //printf("Failed to reopen serial port\n");
+                return -1; // Handle the failure
+            }
+        }
     }
 
     return cField;
@@ -413,11 +438,14 @@ int updateStateMachineRead(unsigned char *packet) {
     int i = 0;
 
     while (state != STOP) {  
-        if (readByteSerialPort(&byte) > 0 ) {
-            if (i<20){
+        int r = readByteSerialPort(&byte);
+        //printf("%d \n",r);
+        if (r > 0 ) {
+            // if (i<20){
                 printf("byte: %x\n", byte);
-                i++;
-            } 
+            //     i++;
+            // } 
+            //printf("\n\nloopitiloop\n\n");
             switch (state)
             {
                 case START:{
@@ -523,6 +551,19 @@ int updateStateMachineRead(unsigned char *packet) {
                 }
                 default:
                     break;
+            }
+        } 
+        else if (r == -1) {
+            // Attempt to reopen the serial port
+            //printf("Attempting to open serial port: %s with baud rate: %d\n", serialPort, baudRate);
+            fd = openSerialPort(serialPort, baudRate);
+            if (fd != -1) {
+                printf("Successfully reopened serial port fd: %d\n", fd);
+                state = START;  // Reset the state machine
+                continue;       // Retry reading
+            } else {
+                //printf("Failed to reopen serial port\n");
+                return -1;  // Handle the failure
             }
         }
     }

@@ -29,6 +29,8 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
     strcpy(connect.serialPort, serialPort);
 
     printf("Debug: Attempting to open connection on %s as %s.\n", serialPort, role);
+    
+    //while (llopen(connect) < 0);
     if (llopen(connect) < 0){
         perror("Error: Connection failed.\n");
         exit(-1);
@@ -69,7 +71,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
                 }
             }
 
-            printf("Debug: File transfer complete, closing file.\n");
+            //printf("Debug: File transfer complete, closing file.\n");
             fclose(newFile);
             break;
         }
@@ -137,7 +139,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
                 exit(-1);
             }
 
-            printf("Debug: File transmission complete.\n");
+            //printf("Debug: File transmission complete.\n");
             llclose(1);
             break;
         }
