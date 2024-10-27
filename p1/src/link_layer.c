@@ -100,7 +100,7 @@ int llopen(LinkLayer connectionParameters)
             
         }
         
-        unsigned char supervisionFrames[BUF_SIZE] = {F, A, C_UA, A^C_UA, F};
+        unsigned char supervisionFrames[BUF_SIZE] = {F, A_RX, C_UA, A^C_UA, F};
         writeBytesSerialPort(supervisionFrames, 5);
     }
     else
@@ -161,10 +161,7 @@ int llwrite(const unsigned char *buf, int bufSize)
         rr_byte=FALSE;
         rej_byte=FALSE;
         while (alarmEnabled == FALSE && !rr_byte && !rej_byte ) {
-            //if error case removed so program dont stop when serial port is closed
             writeBytesSerialPort(dataFrame, j);
-
-            
 
             unsigned char res = updateStateMachineWrite();
             if (!res) {
@@ -222,7 +219,31 @@ int llclose(int showStatistics)
 
         while (alarmEnabled == FALSE && state != STOP) {
             if (readByteSerialPort(&byte) > 0) {
-                updateStateMachine(byte, &state, 0);
+                switch (state) {
+                    case START:
+                        if (byte == FLAG) state = FLAG_RCV;
+                        break;
+                    case FLAG_RCV:
+                        if (byte == A_RX) state = A_RCV;
+                        else if (byte != FLAG) state = START;
+                        break;
+                    case A_RCV:
+                        if (byte == C_DISC) state = C_RCV;
+                        else if (byte == FLAG) state = FLAG_RCV;
+                        else state = START;
+                        break;
+                    case C_RCV:
+                        if (byte == (A_RX ^ C_DISC)) state = BCC1_OK;
+                        else if (byte == FLAG) state = FLAG_RCV;
+                        else state = START;
+                        break;
+                    case BCC1_OK:
+                        if (byte == FLAG) state = STOP;
+                        else state = START;
+                        break;
+                    default: 
+                        break;
+                }
             }
         }
         retransmissions--;
@@ -230,7 +251,6 @@ int llclose(int showStatistics)
     if (state != STOP)
         return -1;
 
-    //send another supervision frame??? why?
     supervisionFrames[2] = C_UA;
     supervisionFrames[3] = A^C_UA;
     if(writeBytesSerialPort(supervisionFrames, 5)!=5) {
@@ -248,51 +268,52 @@ int updateStateMachine(unsigned char byte, StateLinkL *state, LinkLayerRole role
         case START:
             if (byte == F)
             {
+                printf("passei para flag");
                 *state = FLAG_RCV;
             }
-            else printf("weird byte\n");
+            else printf("weird byte start\n");
             break;
 
         case FLAG_RCV:
-            if (byte == A && (role == LlTx || role == LlRx))
+            if ((byte == A_RX && role == LlTx) || (role == LlRx && byte== A))
             {
                 *state = A_RCV;
+                printf("passei para a_rcv");
+
             }
             else if (byte == A_RX && role == 0) {
                 *state = A_RCV;
             }
             else if (byte != F) *state = START;
 
-            else printf("weird byte\n");
+            else printf("weird byte flag\n");
             break;
 
         case A_RCV:
             if ((byte == C_Set && role == LlRx) || (byte == C_UA && role == LlTx) || (byte == C_DISC && role == 0)) {
                 *state = C_RCV;
                 c_byte = byte;
+                printf("passei para c_rcv");
             }
             
-            else if (byte != F) *state = START;
-
             else if (byte == F) *state= FLAG_RCV;
 
-            else printf("weird byte\n");
+            else *state = START;
 
             break;
 
 
         case C_RCV:
-            if (byte == (A^c_byte) && (role == LlTx || role == LlRx)) {
+            if (((byte ==A_RX^c_byte) && role == LlTx) || ((byte ==A^c_byte) && role == LlRx)) {
                 *state = BCC1_OK;
+                printf("passei para bcc1_ok");
             }
             else if (byte == (A_RX^C_DISC) && role == 0) {
                 *state = BCC1_OK;
             }
-            else if (byte != F) *state = START;
-
+            
             else if (byte == F) *state= FLAG_RCV;
-
-            else printf("weird byte\n");
+            else *state = START;
 
             break;
             
@@ -303,7 +324,7 @@ int updateStateMachine(unsigned char byte, StateLinkL *state, LinkLayerRole role
             }
             else {
                 *state = START;
-                printf("weird byte\n");
+                printf("weird byte bcc1\n");
             }
             break;
         
@@ -357,6 +378,9 @@ int updateStateMachineWrite() {
 
                 case C_RCV:
                     printf("C_RCV\n");
+                    printf("byte: %x\n", byte);
+                    printf("A_RX^cField: %x\n", A_RX^cField);
+
                     if (byte == (A_RX ^ cField)) state = BCC1_OK;
                     else if (byte == FLAG) state = FLAG_RCV;
                     else state = START;
