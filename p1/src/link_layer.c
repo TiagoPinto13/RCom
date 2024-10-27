@@ -50,7 +50,7 @@ int llopen(LinkLayer connectionParameters)
         return -1;
     }
     retransmissions = connectionParameters.nRetransmissions;
-    int timeout = connectionParameters.timeout;
+    timeout = connectionParameters.timeout;
     StateLinkL state = START;
     if (connectionParameters.role == LlTx && state==START ) {
         unsigned char byte;
@@ -161,9 +161,8 @@ int llwrite(const unsigned char *buf, int bufSize)
         rr_byte=FALSE;
         rej_byte=FALSE;
         while (alarmEnabled == FALSE && !rr_byte && !rej_byte ) {
-            if(writeBytesSerialPort(dataFrame, j)<0) {
-                return -1;
-            }
+            //if error case removed so program dont stop when serial port is closed
+            writeBytesSerialPort(dataFrame, j);
 
             
 
@@ -187,6 +186,7 @@ int llwrite(const unsigned char *buf, int bufSize)
     if (rr_byte) {
         return frameSize;
     }
+    printf("Closing llclose in llwrite\n");
     llclose(1);
     return -1;
 }
@@ -319,11 +319,13 @@ int updateStateMachineWrite() {
     StateLinkL state = START;
     int i = 0;
     while (state != STOP && alarmEnabled == FALSE) {  
+        //printf("aaa\n");
+
         if (readByteSerialPort(&byte) > 0 ) {
-            if (i<20){
-                printf("byte: %x\n", byte);
-                i++;
-            } 
+            // if (i<20){
+            //     printf("byte: %x\n", byte);
+            //     i++;
+            // } 
             switch (state)
             {
                 case START:
