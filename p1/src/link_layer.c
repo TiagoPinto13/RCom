@@ -159,11 +159,8 @@ int llwrite(const unsigned char *buf, int bufSize)
     int rr_byte=FALSE;
     int rej_byte=FALSE;
     int nnretransmissions = retransmissions;
-    printf("retransmissions: %d\n", nnretransmissions);
-    struct sigaction act = {0};
-    act.sa_handler=&alarmHandler;
-    (void)sigaction(SIGALRM, &act,NULL);
-    while (nnretransmissions>0) {
+    printf("retransmissions: %d\n", nnretransmissions); 
+    while (nnretransmissions>=0) {
         alarmEnabled = FALSE;
         alarm(timeout);
         rr_byte=FALSE;
@@ -351,15 +348,9 @@ int updateStateMachineWrite() {
     StateLinkL state = START;
     int i = 0;
     while (state != STOP && alarmEnabled == FALSE) {  
-        //printf("aaa\n");
         int r = readByteSerialPort(&byte); 
-        //printf("%d \n",r);
-
         if (r > 0 ) {
-            // if (i<20){
-            //     printf("byte: %x\n", byte);
-            //     i++;
-            // } 
+            
             switch (state)
             {
                 case START:
@@ -414,15 +405,15 @@ int updateStateMachineWrite() {
             }
         }
         else if (r == -1) {
-            //printf("Attempting to open serial port: %s with baud rate: %d\n", serialPort, baudRate);
+            // Attempt to reopen the serial port
+
             fd = openSerialPort(serialPort, baudRate);
             if (fd != -1) {
                 printf("Successfully reopened serial port\n");
-                state = START;  // Reset the state machine
-                return 0;       // Continue the protocol
+                state = START;  
+                return 0;       
             } else {
-                //printf("Failed to reopen serial port\n");
-                return -1; // Handle the failure
+                return -1; 
             }
         }
     }
@@ -439,13 +430,7 @@ int updateStateMachineRead(unsigned char *packet) {
 
     while (state != STOP) {  
         int r = readByteSerialPort(&byte);
-        //printf("%d \n",r);
         if (r > 0 ) {
-            // if (i<20){
-                printf("byte: %x\n", byte);
-            //     i++;
-            // } 
-            //printf("\n\nloopitiloop\n\n");
             switch (state)
             {
                 case START:{
@@ -489,7 +474,11 @@ int updateStateMachineRead(unsigned char *packet) {
                 }
 
                 case READING:{
-                    if (byte == ESC){
+                    if (index > BUF_SIZE -1){
+                        printf("Error: packet buffer overflow\n");
+                        return -1; 
+                    }
+                    else if (byte == ESC){
                         state = FOUND_ESC;
                     }
                     else if (byte == FLAG) {
@@ -555,15 +544,13 @@ int updateStateMachineRead(unsigned char *packet) {
         } 
         else if (r == -1) {
             // Attempt to reopen the serial port
-            //printf("Attempting to open serial port: %s with baud rate: %d\n", serialPort, baudRate);
             fd = openSerialPort(serialPort, baudRate);
             if (fd != -1) {
                 printf("Successfully reopened serial port fd: %d\n", fd);
-                state = START;  // Reset the state machine
-                continue;       // Retry reading
+                state = START;  
+                continue;    
             } else {
-                //printf("Failed to reopen serial port\n");
-                return -1;  // Handle the failure
+                return -1;  
             }
         }
     }
