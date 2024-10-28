@@ -9,7 +9,7 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <stdint.h>
-
+#include <string.h>
 
 
 
@@ -39,9 +39,11 @@ int retransmissions = 0;
 int timeout;
 unsigned char currentTramaTx = 0;
 extern int alarmEnabled;
-extern fd;
+extern int fd;
 char serialPort[50]; 
 int baudRate;
+
+
 ////////////////////////////////////////////////
 // LLOPEN
 ////////////////////////////////////////////////
@@ -105,7 +107,7 @@ int llopen(LinkLayer connectionParameters)
             
         }
         
-        unsigned char supervisionFrames[BUF_SIZE] = {F, A_RX, C_UA, A^C_UA, F};
+        unsigned char supervisionFrames[BUF_SIZE] = {F, A_RX, C_UA, (A_RX^C_UA), F};
         writeBytesSerialPort(supervisionFrames, 5);
     }
     else
@@ -312,7 +314,7 @@ int updateStateMachine(unsigned char byte, StateLinkL *state, LinkLayerRole role
 
 
         case C_RCV:
-            if (((byte ==A_RX^c_byte) && role == LlTx) || ((byte ==A^c_byte) && role == LlRx)) {
+            if (((byte ==(A_RX^c_byte)) && role == LlTx) || ((byte ==(A^c_byte)) && role == LlRx)) {
                 *state = BCC1_OK;
                 printf("passei para bcc1_ok");
             }
@@ -346,7 +348,6 @@ int updateStateMachineWrite() {
     unsigned char byte= 0;
     unsigned char cField = 0;
     StateLinkL state = START;
-    int i = 0;
     while (state != STOP && alarmEnabled == FALSE) {  
         int r = readByteSerialPort(&byte); 
         if (r > 0 ) {
@@ -406,7 +407,6 @@ int updateStateMachineWrite() {
         }
         else if (r == -1) {
             // Attempt to reopen the serial port
-
             fd = openSerialPort(serialPort, baudRate);
             if (fd != -1) {
                 printf("Successfully reopened serial port\n");
@@ -426,8 +426,6 @@ int updateStateMachineRead(unsigned char *packet) {
     unsigned char byte, cField = 0;
     StateLinkL state = START;
     int index = 0;
-    int i = 0;
-
     while (state != STOP) {  
         int r = readByteSerialPort(&byte);
         if (r > 0 ) {

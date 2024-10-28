@@ -44,9 +44,9 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
             while ((packetSize = llread(packet)) < 0);
             printf("Debug: Received start control packet of size %d.\n", packetSize);
 
-            unsigned long int rxFileSize = 0;
-            unsigned char* name = parseControlPacket(packet, packetSize, &rxFileSize); 
-            printf("Debug: Control packet parsed. File name: %s, Size: %lu.\n", name, rxFileSize);
+            unsigned long int FileSizeRx = 0;
+            unsigned char* name = parseControlPacket(packet, packetSize, &FileSizeRx); 
+            printf("Debug: Control packet parsed. File name: %s, Size: %lu.\n", name, FileSizeRx);
             printf("file name: %s\n", filename);
             FILE* newFile = fopen(filename, "wb+");
 
@@ -71,7 +71,6 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
                 }
             }
 
-            //printf("Debug: File transfer complete, closing file.\n");
             fclose(newFile);
             break;
         }
@@ -90,51 +89,46 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
             
 
         
-            unsigned int cpSize;
+            unsigned int SizeCP;
             
-            unsigned char *controlPacketStart = getControlPacket(1, filename, fileSize, &cpSize);
-            printf("Debug: Control packet created.\n");
-            printf("File name: %s\n", filename);
-            printf("File size: %ld\n", fileSize);
-            printf("Control packet size: %u\n", cpSize);
-            printf("Control packet: ");
-            for (unsigned int i = 0; i < cpSize; i++) {
-                printf("%02X ", controlPacketStart[i]);  // Imprimir em hexadecimal
+            unsigned char *begginingControlPacket = buildControlPacket(1, filename, fileSize, &SizeCP);
+            for (unsigned int i = 0; i < SizeCP; i++) {
+                printf("%02X ", begginingControlPacket[i]);  // Imprimir em hexadecimal
             }
             printf("\n");
-            if (llwrite(controlPacketStart, cpSize) == -1) {
+            if (llwrite(begginingControlPacket, SizeCP) == -1) {
                 printf("Error: Failed to send start control packet.\n");
                 exit(-1);
             }
             printf("Debug: Sent start control packet.\n");
 
-            unsigned char sequence = 0;
-            unsigned char* content = getData(file, fileSize);
+            unsigned char sequenceNumber = 0;
+            unsigned char* fullContent = buildData(file, fileSize);
             printf("FILE SIZE: %ld\n", fileSize);
-            long int bytesLeft = fileSize;
+            long int leftBytes = fileSize;
 
-            while (bytesLeft > 0) {
-                int dataSize = bytesLeft > (long int)MAX_PAYLOAD_SIZE ? MAX_PAYLOAD_SIZE : bytesLeft;
+            while (leftBytes > 0) {
+                int dataSize = leftBytes > (long int)MAX_PAYLOAD_SIZE ? MAX_PAYLOAD_SIZE : leftBytes;
                 unsigned char* data = (unsigned char*)malloc(dataSize);
-                memcpy(data, content, dataSize);
+                memcpy(data, fullContent, dataSize);
 
                 int packetSize;
-                unsigned char* packet = getDataPacket(sequence, data, dataSize, &packetSize);
+                unsigned char* packet = buildDataPacket(sequenceNumber, data, dataSize, &packetSize);
                 if (llwrite(packet, packetSize) == -1) {
                     printf("Error: Failed to send data packet.\n");
                     exit(-1);
                 }
 
-                printf("Debug: Sent packet sequence %d of size %d.\n", sequence, dataSize);
-                bytesLeft -= dataSize;
-                content += dataSize;
-                sequence = (sequence + 1) % 100;
+                printf("Debug: Sent packet sequenceNumber %d of size %d.\n", sequenceNumber, dataSize);
+                leftBytes -= dataSize;
+                fullContent += dataSize;
+                sequenceNumber = (sequenceNumber + 1) % 100;
 
                 free(data);
             }
 
-            unsigned char *controlPacketEnd = getControlPacket(3, filename, fileSize, &cpSize);
-            if (llwrite(controlPacketEnd, cpSize) == -1) {
+            unsigned char *endControlPacket = buildControlPacket(3, filename, fileSize, &SizeCP);
+            if (llwrite(endControlPacket, SizeCP) == -1) {
                 printf("Error: Failed to send end control packet.\n");
                 exit(-1);
             }
@@ -150,54 +144,54 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
             break;
     }
 }
-unsigned char *getControlPacket(const unsigned int c, const char *filename, long int filesize, unsigned int *length){
+unsigned char *buildControlPacket(const unsigned int c, const char *filename, long int filesize, unsigned int *length){
     int L1 = 0;
     int L2 = strlen(filename);
-    int packetpos = 0;
-    long int auxfilesize = filesize;
+    int packetposition = 0;
+    long int filesizeAux = filesize;
 
-    while(auxfilesize > 0){
+    while(filesizeAux > 0){
         L1++;
-        auxfilesize= auxfilesize >> 8;
+        filesizeAux= filesizeAux >> 8;
     }
 
     *length = 3 + L1 + 2 + L2; // 3 bytes for C, T1 and L1, L1 bytes for V1, 1 byte for T2, L2 bytes for V2
 
     unsigned char *packet = (unsigned char*)malloc(*length);
 
-    packet[packetpos] = c;
-    packetpos++;
-    packet[packetpos] = 0;
-    packetpos++;
-    packet[packetpos] = L1;
+    packet[packetposition] = c;
+    packetposition++;
+    packet[packetposition] = 0;
+    packetposition++;
+    packet[packetposition] = L1;
     
-    for(int i = L1 + packetpos; i > packetpos; i--){
+    for(int i = L1 + packetposition; i > packetposition; i--){
         packet[i] = (0XFF & filesize);
         filesize >>= 8;
     }
-    packetpos += L1 + 1;
-    packet[packetpos] = 1;
-    packetpos++;
-    packet[packetpos] = L2;
-    packetpos++;
+    packetposition += L1 + 1;
+    packet[packetposition] = 1;
+    packetposition++;
+    packet[packetposition] = L2;
+    packetposition++;
 
     for(int j = 0; j < L2; j++){
-        packet[packetpos + j] = filename[j];
+        packet[packetposition + j] = filename[j];
     }
     return packet;
 }
 
-unsigned char * getDataPacket(unsigned char sequence, unsigned char *data, int dataSize, int *packetSize){
+unsigned char * buildDataPacket(unsigned char sequenceNumber, unsigned char *data, int dataSize, int *packetSize){
 
     *packetSize = 4 + dataSize;
     unsigned char* packet = (unsigned char*)malloc(*packetSize);
 
     packet[0] = 2;   
-    packet[1] = sequence;
+    packet[1] = sequenceNumber;
     packet[2] = (dataSize >> 8) & 0xFF;
     packet[3] = dataSize & 0xFF;
     memcpy(packet+4, data, dataSize);
-    printf("Packet content: ");
+    printf("Packet fullContent: ");
     for (int i = 0; i < *packetSize; i++) {
         printf("%02X ", packet[i]); 
     }
@@ -225,8 +219,8 @@ void parseDataPacket(const unsigned char* packet, const unsigned int packetSize,
     buffer += packetSize+4;
 }
 
-unsigned char * getData(FILE* fd, long int fileLength) {
-    unsigned char* content = (unsigned char*)malloc(sizeof(unsigned char) * fileLength);
-    fread(content, sizeof(unsigned char), fileLength, fd);
-    return content;
+unsigned char * buildData(FILE* fd, long int fileLength) {
+    unsigned char* fullContent = (unsigned char*)malloc(sizeof(unsigned char) * fileLength);
+    fread(fullContent, sizeof(unsigned char), fileLength, fd);
+    return fullContent;
 }
