@@ -19,17 +19,6 @@ typedef struct
     int timeout;
 } LinkLayer;
 
-typedef enum
-{
-    START,
-    FLAG_RCV,
-    A_RCV,
-    C_RCV,
-    BCC1_OK,
-    STOP,
-    READING,
-    FOUND_ESC
-} StateLinkL;
 
 // SIZE of maximum acceptable payload.
 // Maximum number of bytes that application layer should send to link layer
@@ -56,7 +45,4 @@ int llread(unsigned char *packet);
 // Return "1" on success or "-1" on error.
 int llclose(int showStatistics);
 
-int updateStateMachine(unsigned char byte, StateLinkL *state, LinkLayerRole role);
-int updateStateMachineWrite();
-int updateStateMachineRead();
 #endif // _LINK_LAYER_H_
