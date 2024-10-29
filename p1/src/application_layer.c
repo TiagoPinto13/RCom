@@ -91,7 +91,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         
             unsigned int SizeCP;
             
-            unsigned char *begginingControlPacket = buildControlPacket(1, filename, fileSize, &SizeCP);
+            unsigned char *begginingControlPacket = buildCtrlPacket(1, filename, fileSize, &SizeCP);
             for (unsigned int i = 0; i < SizeCP; i++) {
                 printf("%02X ", begginingControlPacket[i]);  // Imprimir em hexadecimal
             }
@@ -127,7 +127,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
                 free(data);
             }
 
-            unsigned char *endControlPacket = buildControlPacket(3, filename, fileSize, &SizeCP);
+            unsigned char *endControlPacket = buildCtrlPacket(3, filename, fileSize, &SizeCP);
             if (llwrite(endControlPacket, SizeCP) == -1) {
                 printf("Error: Failed to send end control packet.\n");
                 exit(-1);
@@ -144,10 +144,10 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
             break;
     }
 }
-unsigned char *buildControlPacket(const unsigned int c, const char *filename, long int filesize, unsigned int *length){
+unsigned char *buildCtrlPacket(const unsigned int c, const char *filename, long int filesize, unsigned int *length){
     int L1 = 0;
     int L2 = strlen(filename);
-    int packetposition = 0;
+    int packetpos = 0;
     long int filesizeAux = filesize;
 
     while(filesizeAux > 0){
@@ -159,24 +159,27 @@ unsigned char *buildControlPacket(const unsigned int c, const char *filename, lo
 
     unsigned char *packet = (unsigned char*)malloc(*length);
 
-    packet[packetposition] = c;
-    packetposition++;
-    packet[packetposition] = 0;
-    packetposition++;
-    packet[packetposition] = L1;
+    packet[packetpos] = c;
+    packetpos++;
+    packet[packetpos] = 0;
+    packetpos++;
+    packet[packetpos] = L1;
     
-    for(int i = L1 + packetposition; i > packetposition; i--){
+    for(int i = L1 + packetpos; i > packetpos; i--){
         packet[i] = (0XFF & filesize);
         filesize >>= 8;
     }
-    packetposition += L1 + 1;
-    packet[packetposition] = 1;
-    packetposition++;
-    packet[packetposition] = L2;
-    packetposition++;
 
+    packetpos += L1 + 1;
+    
+    packet[packetpos] = 1;
+    
+    packetpos++;
+    
+    packet[packetpos] = L2;
+    packetpos++;
     for(int j = 0; j < L2; j++){
-        packet[packetposition + j] = filename[j];
+        packet[packetpos + j] = filename[j];
     }
     return packet;
 }

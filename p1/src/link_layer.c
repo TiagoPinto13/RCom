@@ -163,6 +163,9 @@ int llwrite(const unsigned char *buf, int bufSize)
     int nnretransmissions = retransmissions;
     printf("retransmissions: %d\n", nnretransmissions); 
     while (nnretransmissions>=0) {
+        if (rej_byte) {
+            nnretransmissions = retransmissions;
+        }
         alarmEnabled = FALSE;
         alarm(timeout);
         rr_byte=FALSE;
