@@ -127,10 +127,12 @@ int updateStateMachineWrite() {
                     printf("byte: %x\n", byte);
                     printf("A_RX^cField: %x\n", A_RX^cField);
 
-                    if (byte == (A_RX ^ cField)) state = BCC1_OK;
+                    if (byte == (A_RX ^ cField)) {
+                        state = BCC1_OK;
+                        printf("BCC1_OK a entrar\n");
+                    } 
                     else if (byte == FLAG) state = FLAG_RCV;
                     else state = START;
-                    printf("BCC1_OK a entrar\n");
                     break;
 
                 case BCC1_OK:
