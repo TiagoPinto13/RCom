@@ -5,11 +5,10 @@
 #include <string.h>
 #include <stdlib.h>
 #include "application_layer_aux.h"
-
+extern int totalPacketsReceived;
 void applicationLayer(const char *serialPort, const char *role, int baudRate,
                       int nTries, int timeout, const char *filename)
 {
-
     LinkLayerRole layerRole;
     if (strcmp(role, "tx") == 0)
         layerRole = LlTx;
@@ -127,7 +126,6 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
 
                 free(data);
             }
-
             unsigned char *endControlPacket = buildControlPacket(3, filename, fileSize, &SizeCP);
             if (llwrite(endControlPacket, SizeCP) == -1) {
                 printf("Error: Failed to send end control packet.\n");

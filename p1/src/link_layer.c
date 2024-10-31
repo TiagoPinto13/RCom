@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+#include <time.h>
 
 
 
@@ -25,6 +26,11 @@ extern int alarmEnabled;
 extern int fd;
 char serialPort[50]; 
 int baudRate;
+int totalPacketsSent = 0;
+int totalPacketsReceived = 0;
+int totalRetransmissions = 0;
+double totalTransferTime = 0.0;
+clock_t startTime, endTime;
 
 
 ////////////////////////////////////////////////
@@ -37,6 +43,8 @@ int llopen(LinkLayer connectionParameters)
     {
         return -1;
     }
+    startTime = clock();
+
     retransmissions = connectionParameters.nRetransmissions;
     timeout = connectionParameters.timeout;
     strcpy(serialPort,connectionParameters.serialPort);
@@ -106,6 +114,7 @@ int llopen(LinkLayer connectionParameters)
 ////////////////////////////////////////////////
 int llwrite(const unsigned char *buf, int bufSize)
 {
+    clock_t packetStartTime = clock();
     int frameSize = 6+bufSize;  // (F,A,C,BCC1, bufdata, BCC2, F)
     unsigned char *dataFrame = (unsigned char *) malloc(frameSize);
     unsigned char BCC2 = 0;
@@ -155,7 +164,7 @@ int llwrite(const unsigned char *buf, int bufSize)
         rej_byte=FALSE;
         while (alarmEnabled == FALSE && !rr_byte && !rej_byte ) {
             writeBytesSerialPort(dataFrame, j);
-
+            totalPacketsSent++;
             unsigned char res = updateStateMachineWrite();
             printf("res: %d fd:%d\n", res, fd);
             if (!res) {
@@ -164,6 +173,7 @@ int llwrite(const unsigned char *buf, int bufSize)
             }
             else if (res == C_REJ[0] || res == C_REJ[1]) {
                 rej_byte = TRUE;
+                totalRetransmissions++;
             }
             else if (res==C_RR[0] || res==C_RR[1]){
                 rr_byte = TRUE;
@@ -174,11 +184,13 @@ int llwrite(const unsigned char *buf, int bufSize)
         if (rr_byte) break;
         nnretransmissions--;
     }
+    totalTransferTime += (double)(clock() - packetStartTime) / CLOCKS_PER_SEC;
     free(dataFrame);
     if (rr_byte) {
         return frameSize;
     }
     printf("Closing llclose in llwrite\n");
+    printf("totalpacketsReceived: %d\n", totalPacketsReceived);
     llclose(1);
     return -1;
 }
@@ -190,7 +202,14 @@ int llwrite(const unsigned char *buf, int bufSize)
 int llread(unsigned char *packet)
 {
     printf("Entering llread...\n");
-    return updateStateMachineRead(packet);
+    clock_t packetStartTime = clock();
+    int result = updateStateMachineRead(packet);
+    if(result > 0){    
+        totalPacketsReceived++;
+    }
+    totalTransferTime += (double)(clock() - packetStartTime) / CLOCKS_PER_SEC;
+
+    return result;
 }
 
 ////////////////////////////////////////////////
@@ -198,6 +217,7 @@ int llread(unsigned char *packet)
 ////////////////////////////////////////////////
 int llclose(int showStatistics)
 {
+    endTime = clock();
     // mandar o F final e fechar a porta série
     StateLinkL state = START;
     unsigned char byte;
@@ -251,6 +271,17 @@ int llclose(int showStatistics)
     supervisionFrames[3] = A^C_UA;
     if(writeBytesSerialPort(supervisionFrames, 5)!=5) {
         return -1;
+    }
+    if (showStatistics) {
+        int time= endTime - startTime;
+        double totalExecutionTime = (double)(time) / CLOCKS_PER_SEC;
+
+        printf("Connection Statistics:\n");
+        printf("Total Packets Sent: %d\n", totalPacketsSent);
+        //printf("Total Packets Received: %d\n", totalPacketsReceived);
+        printf("Total Retransmissions: %d\n", totalRetransmissions);
+        printf("Total Transfer Time (packets): %.2f seconds\n", totalTransferTime);
+        printf("Total Execution Time: %.2f seconds\n", totalExecutionTime);
     }
     int clstat = closeSerialPort();
     return clstat;
